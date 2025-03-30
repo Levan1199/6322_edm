@@ -1,0 +1,27 @@
+Diffusion models are one of the most popular methods for neural image synthesis. The mechanism used for image syntheis can be 
+translated across different data domains, such as text, and audio. Considering the improvements to these models,
+theer are several aspects that can be improved such as the quality iof the synthesized image, training cost, and the speed
+of generating images.
+
+Even though literature has provided a sound theoretical framework, on which to build diffusion models, it is still unclear
+on how to navigate the design space of diffusion models to maximize the desired improvements.
+The paper we proposed to reproduce whiose results, focused on the tangible attributes of diffusion models, that 
+help in navigating the design space more efficiently, rather than focusing on the underlying theoretical work.
+In doing so, the authors provide a new perspective to understanding diffusion models, enabling researchers to better understand the 
+processes behind them.
+They demonstarte this by focusing on a broad class of nerual networks, that are used to predit the score of a a marginal
+distribution of the training data, which is corrupted by Gaussian noise. The score is the gradient of the log likelighood
+of the probability density with respect to the dataset, where the probability densityis parameterized
+by theta and represents the density of the dataset [https://www.iro.umontreal.ca/~vincentp/Publications/smdae_techreport.pdf,
+A Connection Between Score Matching
+and Denoising Autoencoders]
+. Specifically, the authors focus on the 
+denosiign score matching.
+
+Score matching is an alternative to MLE (Maximum Likelihood Estimation) for unnormalized probability density models, whose 
+partition function (the definite integral of the unnormalized density function over its entire domain ). In score matching, instead of matching
+the probability density with real density, whose partition function may be unknonw, we match the score of the distirubtion w.r.t to the dataset
+(in cases where real density in unknwon, we can use implicit score matching)
+
+The second contributions of the authors revolve around the sampling process, and they indeitfy tghe best
+time descretization for the diffusion process sampling that produces best results, aided with higher order Runge-Kutta method 
