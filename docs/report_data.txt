@@ -24,4 +24,17 @@ the probability density with real density, whose partition function may be unkno
 (in cases where real density in unknwon, we can use implicit score matching)
 
 The second contributions of the authors revolve around the sampling process, and they indeitfy tghe best
-time descretization for the diffusion process sampling that produces best results, aided with higher order Runge-Kutta method 
+time descretization for the diffusion process sampling that produces best results, aided with higher order Runge-Kutta method .
+Furthermore, they analyze the significance of sticahtsicity in the sampling process for diffusion models.
+From their results, they identified a crucial component that significalty drops the number of sampling steps.
+
+For the score modelling network, the authors still rely on the commonly used archictectures like DDPM and NCSN
+DDPM stands for denoising diffusion porbabilistic models
+DPM (Diffusion porbabilistic models) are a parametrixed Markov chain, trained using variational inference to produce samples matching the
+datase. The Markov state transition of this chain perform what is equivalent of a reverse diffusion process. 
+Here the forwrad diffusion process corrupts data at each transition with Gaussian noise. If the noise amount is small,
+then we can model the transitions as a conditional Gaussian, allowing us to utilzie Neural Networks to model the 
+probability density.
+Under certain conditions, dictated by the parameterization of the diffusion model, they can be said to be equivalent to score matching 
+networks. [Denoising Diffusion Probabilistic Models]
+
