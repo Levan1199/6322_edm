@@ -38,3 +38,6 @@ probability density.
 Under certain conditions, dictated by the parameterization of the diffusion model, they can be said to be equivalent to score matching 
 networks. [Denoising Diffusion Probabilistic Models]
 
+NCSN:
+A neural network trained for score matching can provide a vector field with the direction in which the log probability 
+of the dataset is higher. This can be used for sample generation using Langevin dynamics.
