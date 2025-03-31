@@ -41,3 +41,20 @@ networks. [Denoising Diffusion Probabilistic Models]
 NCSN:
 A neural network trained for score matching can provide a vector field with the direction in which the log probability 
 of the dataset is higher. This can be used for sample generation using Langevin dynamics.
+
+A probablity flow is the process of incereasing or decerasing the noise level of an image when moving forward or backward in time.
+This process can be expressed in terms of an ODE (Ordinary Diiferential Equation). THis ODE can be formulated in terms of a 
+variance schedule sigma(t), which describes the noise variance. Typically, the choice of this schedule is motivated from physics
+and chosen as sqrt(t), which represents the constant speed heat diffusion. Howveer, in this paper,
+the authors demonstrated that this choise has a considerable effect on the training, and recommends that it should not be 
+blindly chosen.
+For ODE to be considered as a probability flow ODE, the following condition must be satsified:
+    x_a sampeld from p(x_a, sigma(t)) eveolved in time (forward or backward) yeilds x_b sampeld from p(x_b, sigmat(t+/-1))
+    The ODE that satisifes this can be written as -sigmat(t)_dot sigma(t) *score(p(x, sigma(t))) *dt
+A forward step in this ODE makes the data go further away from the distribution, and a backward step makes
+the data go closer towards the distribution.
+The advantage of using score function is that the intractable parition function doesn't need to be computed.
+The denoiser function, parametrized by neural networs, is represented as 
+D_theta(x, sigma) = c_skip(sigma)*x + c_ou(sigma)*F_theta(c_in(sigma)*x, c_coise(sigma)). Here F_theta represents the 
+neural network. The aparemetrs c_* are scaling parameters.
+
