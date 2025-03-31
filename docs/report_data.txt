@@ -57,4 +57,9 @@ The advantage of using score function is that the intractable parition function 
 The denoiser function, parametrized by neural networs, is represented as 
 D_theta(x, sigma) = c_skip(sigma)*x + c_ou(sigma)*F_theta(c_in(sigma)*x, c_coise(sigma)). Here F_theta represents the 
 neural network. The aparemetrs c_* are scaling parameters.
+The denoiser is trained by minimizing the expected L2 error by denoising samples that are randomly sampled, and corrputed with noise n
+which is sampled from a noise distribution according to noise schedule.
+Here we can define the score as (D_theta(x, sigma) - x)/sigma^2
 
+One of the main claim the authors make is that the choices related to the sampling process, such as the noise schedule and s(t)
+should not affect the training of the denoiser.
