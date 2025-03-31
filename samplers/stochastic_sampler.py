@@ -9,9 +9,9 @@ class StochasticSampler:
     """In their paper, they used a scheduling function sigma(t) = t,
     and scaling function s(t) = 1.0
     For other configurations:
-        VP: sigma(t) = sqrt(exp(0.5*beta_d*t^2 + beta_min*t) -1), where beta_d = 19.9, and beta_min = 0.1
+        VP (Variance Preserving): sigma(t) = sqrt(exp(0.5*beta_d*t^2 + beta_min*t) -1), where beta_d = 19.9, and beta_min = 0.1
             s(t) = 1/sqrt(exp(0.5*beta_d*t^2 + beta_min*t))
-        VE: sigma(t) = sqrt(t)
+        VE (Variance Exploding): sigma(t) = sqrt(t)
             s(t) = 1
         iDDPM + DDIM:
             sigma(t) = t

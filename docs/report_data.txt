@@ -63,3 +63,17 @@ Here we can define the score as (D_theta(x, sigma) - x)/sigma^2
 
 One of the main claim the authors make is that the choices related to the sampling process, such as the noise schedule and s(t)
 should not affect the training of the denoiser.
+
+The metric sued to compare the result quality is called Frechet Inception distance (FID). 
+The number of time the denoise (D_theta) is evalauted is termed as the Neural Fucntion Evaluations (NFE)
+Most of the cost in sampling process is due to the D_theta, therfore, improving NFE explicitly improvs
+the sampling speed.
+
+Solving an ODE is an approximation to the trajectory followed by the analytical solution of the ODE. In cases where an 
+analytical solution does'nt exist, we can discretize the integration interval into N steps, and iteratively determine the solution.
+Howveer, this step introduces truncation error, inversly proportional to N. That is, at N-> inf, iterated
+solution approaches analytical solution.
+The commonly used EUler method (first order) has a local truncation error of O(h^2), where h is the step size (or delta_T/N)
+Runge-Kutta method (4th order), which are higher order has better truncation error, at the cost of more evalautions of D_theta per step.
+The Heuns method (2nd order) provides a better tradeoff between EUelrs and RK4 methods.
+
