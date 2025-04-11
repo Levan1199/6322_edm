@@ -101,13 +101,23 @@ class StochasticSampler:
             return min( self.S_churn/self.max_N, 2**0.5 - 1)
         return 0.0
 
-    def step_forward(self, x_t, t_i):
+    def step_forward(self, D_theta, x_t, t_i):
         """steps forward according to algorithm 2
+        D_theta is the denoiser model
         The t_i is the time, to obtain the values sigma(t_i), and s(t_i)
-        x_t is the current sample (from last step, or initial value (x _t at t=0))"""   
+        x_t is the current sample (from last step, or initial value (x _t at t=0))"""  
+        D_theta.eval()
         sigma_t = self.sigma_t(t_i)
         s_t = self.s_t(t_i)
         # line 5 of algo
         sigma_t_hat = sigma_t + self.get_scheduled_gamma(t_i) 
         # line 6 of algo
-        x_t = x_t + self.sample_eps()*(sigma_t_hat**2 - sigma_t**2)**0.5
+        x_t_hat = x_t + self.sample_eps()*(sigma_t_hat**2 - sigma_t**2)**0.5
+        # line 7 of algo
+        d_t = ( x_t_hat - D_theta(x_t_hat, sigma_t_hat) )/sigma_t_hat
+        x_t_1 = x_t_hat + (self.sigma_t(t_i + 1) - sigma_t_hat)*d_t
+        if self.sigma_t(t_i + 1) != 0:
+            d_t_prime = ( x_t_1 - D_theta(x_t_1, self.sigma_t(t_i + 1)) )/self.sigma_t(t_i + 1)
+            x_t_1 = x_t_hat + (self.sigma_t(t_i + 1) - sigma_t_hat)*0.5*(d_t + d_t_prime)
+        return x_t_1
+    
