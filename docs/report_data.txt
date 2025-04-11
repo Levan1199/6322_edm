@@ -75,5 +75,14 @@ Howveer, this step introduces truncation error, inversly proportional to N. That
 solution approaches analytical solution.
 The commonly used EUler method (first order) has a local truncation error of O(h^2), where h is the step size (or delta_T/N)
 Runge-Kutta method (4th order), which are higher order has better truncation error, at the cost of more evalautions of D_theta per step.
-The Heuns method (2nd order) provides a better tradeoff between EUelrs and RK4 methods.
+The Heuns method (2nd order) provides a better tradeoff between EUelrs and RK4 methods, with a 
+truncation error of O(h^3)
+
+
+The time steps t_i determine how the step sizes and truncation errors are distributed between each adjacent nosie level.
+The authors reprot that the step size should derease monotonically, and simialrly sigma should also decerase monotoncially.
+The authors adopt a parametrixed scheme where the timestep t_i is determined according to a sequence of noise level 
+explicitly, t_i = sigma(t)_inverse(sigma_i) . Here sigma_i<N = (A*i +B)^rho and sigma_N = 0 (see equation 5)
+NOte the distinction between sigma(t) which is the scheduled variance and sigma_i (which is a rpedefined sequence (see eq 5))
+
 
