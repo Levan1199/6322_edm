@@ -51,7 +51,9 @@ class StochasticSampler:
     }
     schedule_config_ = {
         "VE": dict(sigma_t=lambda t: t**0.5, s_t=lambda t: 1),
-        "edm": dict(sigma_t=lambda t: t, s_t=lambda t: 1)
+        "edm": dict(sigma_t=lambda t: t, s_t=lambda t: 1),
+        "VP": dict(sigma_t=lambda t: np.sqrt(np.exp(0.5*19.9*np.pow(t, 2) + 0.1*t) -1),
+                   s_t=lambda t: 1/np.sqrt(np.exp(0.5*19.9*np.pow(t, 2) + 0.1*t)))
     }
     def __init__(self, dims, max_N, config, schedule_config):
         """
@@ -82,7 +84,7 @@ class StochasticSampler:
         """Sets the normal distribution, based on S_noise param. 
         This distribution is an indepenedent (diagonal covariance matrix) distribution, from which we 
         sample epsilon_t"""
-        self.distribution = Normal(loc=torch.zeros((self.sample_size)), scale=torch.ones((self.sample_size))*self.S_noise**2)
+        self.distribution = Normal(loc=torch.zeros((self.sample_size)), scale=torch.ones((self.sample_size))*self.S_noise)
     
     def sample_eps(self):
         """Returns a sample from the distribution"""
