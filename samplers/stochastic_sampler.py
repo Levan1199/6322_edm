@@ -4,6 +4,7 @@
 # The algorithm can be found on Page 2
 import torch
 import numpy as np
+from torch.distributions import MultivariateNormal, Normal
 
 class StochasticSampler:
     """In their paper, they used a scheduling function sigma(t) = t,
@@ -37,19 +38,76 @@ class StochasticSampler:
     | S_churn       30     80       80            40    |
     | S_tmin        0.01    0.05    0.05          0.05  |
     | S_tmax        1       1       50            50    |
-    | S_nosie       1.007   1.007   1.003         1.003 |
+    | S_noise       1.007   1.007   1.003         1.003 |
     =====================================================
     
         """
-    def __init__(self, dims, max_N):
-        self.dims = dims
+    # A global config to get the hyperparams
+    hyperparam_config_ = {
+        "CIFAR-10_VP": dict(S_churn=30, S_tmin=0.01, S_tmax=1.0, S_noise=1.007),
+        "CIFAR-10_VE": dict(S_churn=80, S_tmin=0.05, S_tmax=1.0, S_noise=1.007),
+        "ImageNet-pre": dict(S_churn=80, S_tmin=0.05, S_tmax=50.0, S_noise=1.003),
+        "ImageNet-this": dict(S_churn=40, S_tmin=0.05, S_tmax=50.0, S_noise=1.003),
+    }
+    schedule_config_ = {
+        "VE": dict(sigma_t=lambda t: t**0.5, s_t=lambda t: 1),
+        "edm": dict(sigma_t=lambda t: t, s_t=lambda t: 1)
+    }
+    def __init__(self, dims, max_N, config, schedule_config):
+        """
+        Parameters:
+        ----------
+        max_N: The maximum number of ODE steps, this is required to compute scheduling params
+        config: The config to load, options are: see hyperparam_config attr
+        schedule_config: config for schedule params, see schedule_config attr
+        
+        
+        Parameters_misc:
+        --------------
+        sigma(t) = t
+        and s(t) = 1"""
+        if config not in self.hyperparam_config_:
+            raise RuntimeError(f"config provided {config} is not valid for this sampler, please choose from {list(self.hyperparam_config_.keys())}")
+        if schedule_config not in self.schedule_config_:
+            raise RuntimeError(f"schedule config provided {schedule_config} is not valid for this sampler, please choose from {list(self.schedule_config_.keys())}")
+        self.__dict__.update(self.hyperparam_config_.get(config))
+        self.__dict__.update(self.schedule_config_[schedule_config])
+        # self.dims = dims
+        self.sample_size = torch.prod(torch.Tensor(dims))
         self.max_N = max_N
-        self.distributions = dict()
-        for i in range(1, max_N):
-            self.distributions[i] = torch.distributions.Normal(torch.zeros(dims, dims), torch.ones(dims, dims)*i**2 )
+        self.set_normal_distribution()
+        
+        
+    def set_normal_distribution(self):
+        """Sets the normal distribution, based on S_noise param. 
+        This distribution is an indepenedent (diagonal covariance matrix) distribution, from which we 
+        sample epsilon_t"""
+        self.distribution = Normal(loc=torch.zeros((self.sample_size)), scale=torch.ones((self.sample_size))*self.S_noise**2)
     
-    def sample(self):
-        '''Performs stochastic sammpling at time t'''
-        x_0 = torch.zeros(self.dims, self.dims)
-        for i in range(1, self.max_N):
-            
+    def sample_eps(self):
+        """Returns a sample from the distribution"""
+        return self.distribution.sample()
+    
+    def get_scheduled_variance(self, t_i):
+        """ returns sigma(t_i)"""
+        return self.sigma_t(t_i)
+    
+    def get_scheduled_gamma(self, t_i):
+        """Returns the scheduled gamma according to min(S_churn/N, sqrt(2) -1) if t_i E (S_tmin, S_tmax)
+        for the edm case, t_i = sigma_t, however, here we implement a generalized case
+        else 0.
+        t_i  E {0, ..., N}"""
+        if ( t_i <= self.S_tmax and t_i >= self.S_tmin):
+            return min( self.S_churn/self.max_N, 2**0.5 - 1)
+        return 0.0
+
+    def step_forward(self, x_t, t_i):
+        """steps forward according to algorithm 2
+        The t_i is the time, to obtain the values sigma(t_i), and s(t_i)
+        x_t is the current sample (from last step, or initial value (x _t at t=0))"""   
+        sigma_t = self.sigma_t(t_i)
+        s_t = self.s_t(t_i)
+        # line 5 of algo
+        sigma_t_hat = sigma_t + self.get_scheduled_gamma(t_i) 
+        # line 6 of algo
+        x_t = x_t + self.sample_eps()*(sigma_t_hat**2 - sigma_t**2)**0.5
