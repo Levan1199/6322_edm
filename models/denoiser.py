@@ -21,6 +21,31 @@ class NetworkFactory:
 
 
 class NCSN(nn.Module):
+    """NCSN uses the Unet backbone (same with DDPM), and both were propsoed by Song et.al
+    See Table 8, for the network details
+    DDPM++:
+        Resampling filter: Box
+        Noise EMbedding: Positional
+        Skip conn encoder: -
+        Skip conn decoder: -
+        Residual blocks per res: 4
+        Attention res: 16
+        Attention heads: 1
+        Attention blocks in encoder: 4
+        Attention blocks in decoder: 2
+    NCSN++:
+        Resampling filter: Bilinear
+        Noise EMbedding: Fourier
+        Skip conn encoder: Residual
+        Skip conn decoder: -
+        Residual blocks per res: 4
+        Attention res: 16
+        Attention heads: 1
+        Attention blocks in encoder: 4
+        Attention blocks in decoder: 2
+    
+    """
     def __init__(self):
         super().__init__()
+        self.bilinear_filter_dims  = self.register_buffer("filter_dims", torch.Tensor(1, 3, 3, 1))
         
