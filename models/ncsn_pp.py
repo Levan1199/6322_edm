@@ -57,19 +57,19 @@ class VEPrecond(torch.nn.Module):
         self.use_fp16 = self.config.use_fp16
         self.sigma_min = self.config.sigma_min
         self.sigma_max = self.config.sigma_max
-        self.model = NSCNpp()
+        self.model = NCSNpp()
 
-    def forward(self, x, sigma, class_labels=None, force_fp32=False, **model_kwargs):
+    def forward(self, x, sigma):
         x = x.to(torch.float32)
         sigma = sigma.to(torch.float32).reshape(-1, 1, 1, 1)
-        dtype = torch.float16 if (self.use_fp16 and not force_fp32 and x.device.type == 'cuda') else torch.float32
+        dtype = torch.float16 if self.use_fp16 else torch.float32
         
         c_skip = 1
         c_out = sigma
         c_in = 1
         c_noise = (0.5 * sigma).log()
 
-        F_x = self.model((c_in * x).to(dtype), c_noise.flatten(), **model_kwargs)
+        F_x = self.model((c_in * x).to(dtype), c_noise.flatten())
         assert F_x.dtype == dtype
         D_x = c_skip * x + c_out * F_x.to(torch.float32)
         return D_x
@@ -78,7 +78,7 @@ class VEPrecond(torch.nn.Module):
         return torch.as_tensor(sigma)
     
 """This is customzied for the CIFAR-10 dataset"""
-class NSCNpp(torch.nn.Module):
+class NCSNpp(torch.nn.Module):
     """Partially adapted from https://github.com/NVlabs/edm/blob/main/training/networks.py"""
     def __init__(self):
       
@@ -162,7 +162,7 @@ class NSCNpp(torch.nn.Module):
                 self.dec[f'{res}x{res}_aux_norm'] = nn.GroupNorm(num_groups=NCSNppUnet.get_num_groups(cout),num_channels=cout, eps=1e-6)
                 self.dec[f'{res}x{res}_aux_conv'] = Conv2d(in_channels=cout, out_channels=out_channels, kernel=3)
 
-    def forward(self, x, noise_labels,  augment_labels=None):
+    def forward(self, x, noise_labels):
         # Mapping.
         emb = self.map_noise(noise_labels)
         emb = emb.reshape(emb.shape[0], 2, -1).flip(1).reshape(*emb.shape) # swap sin/cos
