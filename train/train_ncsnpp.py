@@ -13,7 +13,9 @@ import psutil
 
 if __name__ == "__main__":
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    path = "/home/sdcnlab/Desktop/RGS/DL_Course_Project/6322_edm/datasets/cifar10-32x32.zip"
+    curr_dir = os.path.dirname(__file__)
+    
+    path = f"{curr_dir}/../datasets/cifar10-32x32.zip"
     batch_size = 16
     torch.multiprocessing.set_start_method('spawn')
     ds = ImageFolderDataset(path=path, use_labels=False, cache=True)
@@ -64,7 +66,7 @@ if __name__ == "__main__":
         train_steps += 1
         done = (train_iter >= int(2e5) * 1000)
         
-        if train_steps%50 == 0:
+        if train_steps%int(18e3) == 0:
             torch.save(dict(net=net_ve, optimizer_state=optimizer.state_dict()), os.path.join("./ncsnpp", f'training-state-{train_iter//1000:06d}.chkpt'))
             logger.add_scalar('Resources/cpu_mem_gb', psutil.Process(os.getpid()).memory_info().rss / 2**30, train_steps)
             logger.add_scalar('Resources/peak_gpu_mem_gb', torch.cuda.max_memory_allocated(device) / 2**30, train_steps)

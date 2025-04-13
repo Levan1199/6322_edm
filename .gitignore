@@ -4,3 +4,4 @@ venv
 cifar-10-python.tar.gz
 *.zip
 datasets
+ncsnpp
