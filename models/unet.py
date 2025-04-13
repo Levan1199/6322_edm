@@ -67,8 +67,23 @@ def weight_init(shape, mode, fan_in, fan_out):
     if mode == 'kaiming_normal':  return np.sqrt(1 / fan_in) * torch.randn(*shape)
     raise ValueError(f'Invalid init mode "{mode}"')
 
+class Linear(nn.Module):
+    """Adapted from https://github.com/NVlabs/edm/blob/main/training/networks.py"""
+    def __init__(self, in_features, out_features, bias=True, init_mode='kaiming_normal', init_weight=1, init_bias=0):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        init_kwargs = dict(mode=init_mode, fan_in=in_features, fan_out=out_features)
+        self.weight = nn.Parameter(weight_init([out_features, in_features], **init_kwargs) * init_weight)
+        self.bias = nn.Parameter(weight_init([out_features], **init_kwargs) * init_bias) if bias else None
 
-class Conv2d(torch.nn.Module):
+    def forward(self, x):
+        x = x @ self.weight.to(x.dtype).t()
+        if self.bias is not None:
+            x = x.add_(self.bias.to(x.dtype))
+        return x
+    
+class Conv2d(nn.Module):
     """Adapted from https://github.com/NVlabs/edm/blob/main/training/networks.py"""
     def __init__(self,
         in_channels, out_channels, kernel, bias=True, up=False, down=False,
@@ -82,8 +97,8 @@ class Conv2d(torch.nn.Module):
         self.down = down
         self.fused_resample = fused_resample
         init_kwargs = dict(mode=init_mode, fan_in=in_channels*kernel*kernel, fan_out=out_channels*kernel*kernel)
-        self.weight = torch.nn.Parameter(weight_init([out_channels, in_channels, kernel, kernel], **init_kwargs) * init_weight) if kernel else None
-        self.bias = torch.nn.Parameter(weight_init([out_channels], **init_kwargs) * init_bias) if kernel and bias else None
+        self.weight = nn.Parameter(weight_init([out_channels, in_channels, kernel, kernel], **init_kwargs) * init_weight) if kernel else None
+        self.bias = nn.Parameter(weight_init([out_channels], **init_kwargs) * init_bias) if kernel and bias else None
         f = torch.as_tensor(resample_filter, dtype=torch.float32)
         f = f.ger(f).unsqueeze(0).unsqueeze(1) / f.sum().square()
         self.register_buffer('resample_filter', f if up or down else None)
@@ -96,18 +111,18 @@ class Conv2d(torch.nn.Module):
         f_pad = (f.shape[-1] - 1) // 2 if f is not None else 0
 
         if self.fused_resample and self.up and w is not None:
-            x = torch.nn.functional.conv_transpose2d(x, f.mul(4).tile([self.in_channels, 1, 1, 1]), groups=self.in_channels, stride=2, padding=max(f_pad - w_pad, 0))
-            x = torch.nn.functional.conv2d(x, w, padding=max(w_pad - f_pad, 0))
+            x = nn.functional.conv_transpose2d(x, f.mul(4).tile([self.in_channels, 1, 1, 1]), groups=self.in_channels, stride=2, padding=max(f_pad - w_pad, 0))
+            x = nn.functional.conv2d(x, w, padding=max(w_pad - f_pad, 0))
         elif self.fused_resample and self.down and w is not None:
-            x = torch.nn.functional.conv2d(x, w, padding=w_pad+f_pad)
-            x = torch.nn.functional.conv2d(x, f.tile([self.out_channels, 1, 1, 1]), groups=self.out_channels, stride=2)
+            x = nn.functional.conv2d(x, w, padding=w_pad+f_pad)
+            x = nn.functional.conv2d(x, f.tile([self.out_channels, 1, 1, 1]), groups=self.out_channels, stride=2)
         else:
             if self.up:
-                x = torch.nn.functional.conv_transpose2d(x, f.mul(4).tile([self.in_channels, 1, 1, 1]), groups=self.in_channels, stride=2, padding=f_pad)
+                x = nn.functional.conv_transpose2d(x, f.mul(4).tile([self.in_channels, 1, 1, 1]), groups=self.in_channels, stride=2, padding=f_pad)
             if self.down:
-                x = torch.nn.functional.conv2d(x, f.tile([self.in_channels, 1, 1, 1]), groups=self.in_channels, stride=2, padding=f_pad)
+                x = nn.functional.conv2d(x, f.tile([self.in_channels, 1, 1, 1]), groups=self.in_channels, stride=2, padding=f_pad)
             if w is not None:
-                x = torch.nn.functional.conv2d(x, w, padding=w_pad)
+                x = nn.functional.conv2d(x, w, padding=w_pad)
         if b is not None:
             x = x.add_(b.reshape(1, -1, 1, 1))
         return x
@@ -127,7 +142,20 @@ class AttentionOp(torch.autograd.Function):
         dq = torch.einsum('nck,nqk->ncq', k.to(torch.float32), db).to(q.dtype) / np.sqrt(k.shape[1])
         dk = torch.einsum('ncq,nqk->nck', q.to(torch.float32), db).to(k.dtype) / np.sqrt(k.shape[1])
         return dq, dk
-    
+
+class GroupNorm(nn.Module):
+    def __init__(self, num_channels, num_groups=32, min_channels_per_group=4, eps=1e-5):
+        super().__init__()
+        self.num_groups = min(num_groups, num_channels // min_channels_per_group)
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(num_channels))
+        self.bias = nn.Parameter(torch.zeros(num_channels))
+
+    def forward(self, x):
+        x = nn.functional.group_norm(x, num_groups=self.num_groups, weight=self.weight.to(x.dtype), bias=self.bias.to(x.dtype), eps=self.eps)
+        return x
+
+
 class FourierEmbedding(nn.Module):
     """adapted from: NCSN implemetation 
     @https://github.com/NVlabs/edm/blob/main/training/networks.py"""
@@ -167,7 +195,7 @@ class NCSNppUnet(nn.Module):
     @staticmethod
     def get_num_groups(num_channels):
         """returns the number of groups givent he number of channels"""
-        return min(32, num_channels // 32)
+        return min(32, num_channels // 4)
     
     def __init__(self,
         in_channels, out_channels, emb_channels, up=False, down=False, attention=False,
@@ -185,10 +213,10 @@ class NCSNppUnet(nn.Module):
         self.adaptive_scale = adaptive_scale
 
             
-        self.norm0 = nn.GroupNorm(num_groups=self.get_num_groups(in_channels), num_channels=in_channels, eps=eps)
-        self.conv0 = Conv2d(in_channels=in_channels, out_channels=out_channels, kernel=3, resample_filter=resample_filter, **init)
-        self.affine = nn.Linear(in_features=emb_channels, out_features=out_channels*(2 if adaptive_scale else 1))
-        self.norm1 = nn.GroupNorm(num_groups=self.get_num_groups(out_channels), num_channels=out_channels, eps=eps)
+        self.norm0 = GroupNorm(num_channels=in_channels, eps=eps)
+        self.conv0 = Conv2d(in_channels=in_channels, out_channels=out_channels, kernel=3, up=up, down=down, resample_filter=resample_filter, **init)
+        self.affine = Linear(in_features=emb_channels, out_features=out_channels*(2 if adaptive_scale else 1))
+        self.norm1 = GroupNorm( num_channels=out_channels, eps=eps)
         self.conv1 = Conv2d(in_channels=out_channels, out_channels=out_channels, kernel=3, **init_zero)
 
         self.skip = None
@@ -197,7 +225,7 @@ class NCSNppUnet(nn.Module):
             self.skip = Conv2d(in_channels=in_channels, out_channels=out_channels, kernel=kernel, up=up, down=down, resample_filter=resample_filter, **init)
 
         if self.num_heads:
-            self.norm2 = nn.GroupNorm(num_groups=self.get_num_groups(out_channels), num_channels=out_channels, eps=eps)
+            self.norm2 = GroupNorm( num_channels=out_channels, eps=eps)
             self.qkv = Conv2d(in_channels=out_channels, out_channels=out_channels*3, kernel=1, **(init_attn if init_attn is not None else init))
             self.proj = Conv2d(in_channels=out_channels, out_channels=out_channels, kernel=1, **init_zero)
 
@@ -212,7 +240,8 @@ class NCSNppUnet(nn.Module):
         else:
             x = func.silu(self.norm1(x.add_(params)))
 
-        x = self.conv1(torch.nn.functional.dropout(x, p=self.dropout, training=self.training))
+        x = self.conv1(nn.functional.dropout(x, p=self.dropout, training=self.training))
+        # breakpoint()
         x = x.add_(self.skip(orig) if self.skip is not None else orig)
         x = x * self.skip_scale
 

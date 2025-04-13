@@ -3,8 +3,10 @@
 import numpy as np
 import torch
 import torch.nn as nn 
-from .unet import (NCSNppUnet, Conv2d)
+from .unet import (NCSNppUnet, Conv2d, Linear)
 import torch.nn.functional as func
+
+DEBUG = True
 
 class CIFAR10_config_VE:
     """A config class that holds CIFAR-10 specific params for VE"""
@@ -20,7 +22,7 @@ class CIFAR10_config_VE:
     channel_multiplier_noise = 2
     resample_filter = [1,3,3,1]
     feature_channels = 128
-    channel_multipliers = [2,2,2]
+    channel_multipliers = [1, 2,2,2]
     label_dim       = 0 # we are only training unconditional
     residual_blocks_per_res = 4 
     attention_resolutions    = [16],     # the feature resolutions at which we employ attention mechanism
@@ -97,8 +99,8 @@ class NSCNpp(torch.nn.Module):
 
         self.map_noise =  FourierEmbedding(num_channels=noise_channels)
         # self.map_augment = Linear(in_features=augment_dim, out_features=noise_channels, bias=False, **init) if augment_dim else None
-        self.map_layer0 = nn.Linear(in_features=noise_channels, out_features=embedding_channels, bias=True)
-        self.map_layer1 = nn.Linear(in_features=embedding_channels, out_features=embedding_channels, bias=True)
+        self.map_layer0 = Linear(in_features=noise_channels, out_features=embedding_channels, )#bias=True)
+        self.map_layer1 = Linear(in_features=embedding_channels, out_features=embedding_channels, )#bias=True)
 
         # Encoder.
         self.enc = torch.nn.ModuleDict()
@@ -106,10 +108,14 @@ class NSCNpp(torch.nn.Module):
         c_auxilliary = in_channels
         for depth, feature_multiplier in enumerate(config.channel_multipliers):
             res = img_resolution >> depth
+            if DEBUG:   
+                print("~"*50)
+                print("depth: ", depth, " feature multiplier: ", feature_multiplier)
+                print("res :", res)
             if depth == 0:
                 cin = cout
                 cout = feature_channels
-                self.enc[f'{res}x{res}_conv'] = nn.Conv2d(in_channels=cin, out_channels=cout, kernel_size=3)
+                self.enc[f'{res}x{res}_conv'] = Conv2d(in_channels=cin, out_channels=cout, kernel=3)
             else:
                 self.enc[f'{res}x{res}_down'] = NCSNppUnet(in_channels=cout, out_channels=cout, down=True,  emb_channels=embedding_channels, num_heads=1, dropout=dropout, skip_scale=np.sqrt(0.5), eps=1e-6,
                                     resample_filter=resample_filter, resample_proj=True, adaptive_scale=False,
@@ -117,6 +123,8 @@ class NSCNpp(torch.nn.Module):
                 
                 self.enc[f'{res}x{res}_aux_residual'] = Conv2d(in_channels=c_auxilliary, out_channels=cout, kernel=3, down=True, resample_filter=resample_filter, fused_resample=True)
                 c_auxilliary = cout
+            if DEBUG:
+                print("cout: ", cout)
             for idx in range(config.residual_blocks_per_res):
                 cin = cout
                 cout = feature_channels * feature_multiplier
@@ -125,7 +133,9 @@ class NSCNpp(torch.nn.Module):
                                     resample_filter=resample_filter, resample_proj=True, adaptive_scale=False,
                                     init=linear_layer_initialization_kwargs, init_zero=init_weight_kwargs, init_attn=attention_layer_initialization_kwargs)
         skips = [block.out_channels for name, block in self.enc.items() if 'aux' not in name]
-
+        if DEBUG:
+            print("~"*50)
+            print(skips)
         # Decoder.
         self.dec = torch.nn.ModuleDict()
         for depth, feature_multiplier in reversed(list(enumerate(config.channel_multipliers))):
@@ -163,13 +173,18 @@ class NSCNpp(torch.nn.Module):
         skips = []
         aux = x
         for name, block in self.enc.items():
-            # if 'aux_down' in name:
-            #     aux = block(aux)
-            # elif 'aux_skip' in name:
-            #     x = skips[-1] = x + block(aux)
+            if 'aux_down' in name:
+                aux = block(aux)
+            elif 'aux_skip' in name:
+                raise RuntimeError()
+                x = skips[-1] = x + block(aux)
             if 'aux_residual' in name:
                 x = skips[-1] = aux = (x + block(aux)) / np.sqrt(2)
             else:
+                # try:
+                #     x_ = block(x, emb) if isinstance(block, NCSNppUnet) else block(x)
+                # except:
+                #     breakpoint()
                 x = block(x, emb) if isinstance(block, NCSNppUnet) else block(x)
                 skips.append(x)
 
