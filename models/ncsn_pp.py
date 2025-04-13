@@ -23,6 +23,8 @@ class CIFAR10_config_VE:
     channel_multipliers = [2,2,2]
     label_dim       = 0 # we are only training unconditional
     residual_blocks_per_res = 4 
+    attention_resolutions    = [16],     # the feature resolutions at which we employ attention mechanism
+    dropout             = 0.13  
     # embedding_type = "fourier"
     # encoder = "residual"
     # decoder = "standard"
@@ -53,9 +55,7 @@ class VEPrecond(torch.nn.Module):
         self.use_fp16 = self.config.use_fp16
         self.sigma_min = self.config.sigma_min
         self.sigma_max = self.config.sigma_max
-        self.model = NSCNUnetpp(img_resolution=self.img_resolution,
-                                in_channels=self.img_channels, out_channels=self.img_channels,
-                                label_dim=self.label_dim)
+        self.model = NSCNpp()
 
     def forward(self, x, sigma, class_labels=None, force_fp32=False, **model_kwargs):
         x = x.to(torch.float32)
@@ -76,19 +76,17 @@ class VEPrecond(torch.nn.Module):
         return torch.as_tensor(sigma)
     
 """This is customzied for the CIFAR-10 dataset"""
-class NSCNUnetpp(torch.nn.Module):
+class NSCNpp(torch.nn.Module):
     """Partially adapted from https://github.com/NVlabs/edm/blob/main/training/networks.py"""
-    def __init__(self,
-        img_resolution,                     
-        in_channels,                        
-        out_channels,                       
-        attention_resolutions    = [16],     # the feature resolutions at which we employ attention mechanism
-        dropout             = 0.10,         
-        
-    ):
+    def __init__(self):
       
         super().__init__()
         config = CIFAR10_config_VE()
+        img_resolution = config.img_resolution
+        in_channels = config.in_channels
+        out_channels = config.out_channels
+        attention_resolutions    = config.attention_resolutions
+        dropout             = config.dropout
         feature_channels = config.feature_channels # the number of channels for hidden features
         embedding_channels = feature_channels *config.channel_multiplier_embedding
         noise_channels = feature_channels * config.channel_multiplier_noise
@@ -107,13 +105,13 @@ class NSCNUnetpp(torch.nn.Module):
         cout = in_channels
         c_auxilliary = in_channels
         for depth, feature_multiplier in enumerate(config.channel_multipliers):
-            res = img_resolution // depth
+            res = img_resolution >> depth
             if depth == 0:
                 cin = cout
                 cout = feature_channels
                 self.enc[f'{res}x{res}_conv'] = nn.Conv2d(in_channels=cin, out_channels=cout, kernel_size=3)
             else:
-                self.enc[f'{res}x{res}_down'] = NCSNppUnet(in_channels=cout, out_channels=cout, down=True,  embedding_channels=embedding_channels, num_heads=1, dropout=dropout, skip_scale=np.sqrt(0.5), eps=1e-6,
+                self.enc[f'{res}x{res}_down'] = NCSNppUnet(in_channels=cout, out_channels=cout, down=True,  emb_channels=embedding_channels, num_heads=1, dropout=dropout, skip_scale=np.sqrt(0.5), eps=1e-6,
                                     resample_filter=resample_filter, resample_proj=True, adaptive_scale=False,
                                     init=linear_layer_initialization_kwargs, init_zero=init_weight_kwargs, init_attn=attention_layer_initialization_kwargs)
                 
@@ -123,7 +121,7 @@ class NSCNUnetpp(torch.nn.Module):
                 cin = cout
                 cout = feature_channels * feature_multiplier
                 attn = (res in attention_resolutions)
-                self.enc[f'{res}x{res}_block{idx}'] = NCSNppUnet(in_channels=cin, out_channels=cout, attention=attn, embedding_channels=embedding_channels, num_heads=1, dropout=dropout, skip_scale=np.sqrt(0.5), eps=1e-6,
+                self.enc[f'{res}x{res}_block{idx}'] = NCSNppUnet(in_channels=cin, out_channels=cout, attention=attn, emb_channels=embedding_channels, num_heads=1, dropout=dropout, skip_scale=np.sqrt(0.5), eps=1e-6,
                                     resample_filter=resample_filter, resample_proj=True, adaptive_scale=False,
                                     init=linear_layer_initialization_kwargs, init_zero=init_weight_kwargs, init_attn=attention_layer_initialization_kwargs)
         skips = [block.out_channels for name, block in self.enc.items() if 'aux' not in name]
@@ -131,27 +129,27 @@ class NSCNUnetpp(torch.nn.Module):
         # Decoder.
         self.dec = torch.nn.ModuleDict()
         for depth, feature_multiplier in reversed(list(enumerate(config.channel_multipliers))):
-            res = img_resolution // depth
+            res = img_resolution >> depth
             if depth == len(config.channel_multipliers) - 1:
-                self.dec[f'{res}x{res}_in0'] = NCSNppUnet(in_channels=cout, out_channels=cout, attention=True,  embedding_channels=embedding_channels, num_heads=1, dropout=dropout, skip_scale=np.sqrt(0.5), eps=1e-6,
+                self.dec[f'{res}x{res}_in0'] = NCSNppUnet(in_channels=cout, out_channels=cout, attention=True,  emb_channels=embedding_channels, num_heads=1, dropout=dropout, skip_scale=np.sqrt(0.5), eps=1e-6,
                                     resample_filter=resample_filter, resample_proj=True, adaptive_scale=False,
                                     init=linear_layer_initialization_kwargs, init_zero=init_weight_kwargs, init_attn=attention_layer_initialization_kwargs)
-                self.dec[f'{res}x{res}_in1'] = NCSNppUnet(in_channels=cout, out_channels=cout,  embedding_channels=embedding_channels, num_heads=1, dropout=dropout, skip_scale=np.sqrt(0.5), eps=1e-6,
+                self.dec[f'{res}x{res}_in1'] = NCSNppUnet(in_channels=cout, out_channels=cout,  emb_channels=embedding_channels, num_heads=1, dropout=dropout, skip_scale=np.sqrt(0.5), eps=1e-6,
                                     resample_filter=resample_filter, resample_proj=True, adaptive_scale=False,
                                     init=linear_layer_initialization_kwargs, init_zero=init_weight_kwargs, init_attn=attention_layer_initialization_kwargs)
             else:
-                self.dec[f'{res}x{res}_up'] = NCSNppUnet(in_channels=cout, out_channels=cout, up=True,  embedding_channels=embedding_channels, num_heads=1, dropout=dropout, skip_scale=np.sqrt(0.5), eps=1e-6,
+                self.dec[f'{res}x{res}_up'] = NCSNppUnet(in_channels=cout, out_channels=cout, up=True,  emb_channels=embedding_channels, num_heads=1, dropout=dropout, skip_scale=np.sqrt(0.5), eps=1e-6,
                                     resample_filter=resample_filter, resample_proj=True, adaptive_scale=False,
                                     init=linear_layer_initialization_kwargs, init_zero=init_weight_kwargs, init_attn=attention_layer_initialization_kwargs)
             for idx in range(config.residual_blocks_per_res + 1):
                 cin = cout + skips.pop()
                 cout = feature_channels * feature_multiplier
                 attn = (idx == config.residual_blocks_per_res and res in attention_resolutions)
-                self.dec[f'{res}x{res}_block{idx}'] = NCSNppUnet(in_channels=cin, out_channels=cout, attention=attn,  embedding_channels=embedding_channels, num_heads=1, dropout=dropout, skip_scale=np.sqrt(0.5), eps=1e-6,
+                self.dec[f'{res}x{res}_block{idx}'] = NCSNppUnet(in_channels=cin, out_channels=cout, attention=attn,  emb_channels=embedding_channels, num_heads=1, dropout=dropout, skip_scale=np.sqrt(0.5), eps=1e-6,
                                     resample_filter=resample_filter, resample_proj=True, adaptive_scale=False,
                                     init=linear_layer_initialization_kwargs, init_zero=init_weight_kwargs, init_attn=attention_layer_initialization_kwargs)
             if depth == 0:
-                self.dec[f'{res}x{res}_aux_norm'] = nn.GroupNorm(num_channels=cout, eps=1e-6)
+                self.dec[f'{res}x{res}_aux_norm'] = nn.GroupNorm(num_groups=NCSNppUnet.get_num_groups(cout),num_channels=cout, eps=1e-6)
                 self.dec[f'{res}x{res}_aux_conv'] = Conv2d(in_channels=cout, out_channels=out_channels, kernel=3)
 
     def forward(self, x, noise_labels,  augment_labels=None):

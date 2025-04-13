@@ -2,3 +2,5 @@ CIFAR-10
 build
 venv
 cifar-10-python.tar.gz
+*.zip
+datasets

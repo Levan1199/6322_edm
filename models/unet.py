@@ -164,7 +164,11 @@ class NCSNppUnet(nn.Module):
         to StyleGAN-2
         NOTE: We may need to implement kaiming_normal init for GroupNorm and Linear
         Adapted from https://github.com/NVlabs/edm/blob/main/training/networks.py"""
-        
+    @staticmethod
+    def get_num_groups(num_channels):
+        """returns the number of groups givent he number of channels"""
+        return min(32, num_channels // 32)
+    
     def __init__(self,
         in_channels, out_channels, emb_channels, up=False, down=False, attention=False,
         num_heads=None, channels_per_head=64, dropout=0, skip_scale=1, eps=1e-5,
@@ -181,10 +185,10 @@ class NCSNppUnet(nn.Module):
         self.adaptive_scale = adaptive_scale
 
             
-        self.norm0 = nn.GroupNorm(num_channels=in_channels, eps=eps)
+        self.norm0 = nn.GroupNorm(num_groups=self.get_num_groups(in_channels), num_channels=in_channels, eps=eps)
         self.conv0 = Conv2d(in_channels=in_channels, out_channels=out_channels, kernel=3, resample_filter=resample_filter, **init)
-        self.affine = nn.Linear(in_features=emb_channels, out_features=out_channels*(2 if adaptive_scale else 1), **init)
-        self.norm1 = nn.GroupNorm(num_channels=out_channels, eps=eps)
+        self.affine = nn.Linear(in_features=emb_channels, out_features=out_channels*(2 if adaptive_scale else 1))
+        self.norm1 = nn.GroupNorm(num_groups=self.get_num_groups(out_channels), num_channels=out_channels, eps=eps)
         self.conv1 = Conv2d(in_channels=out_channels, out_channels=out_channels, kernel=3, **init_zero)
 
         self.skip = None
@@ -193,7 +197,7 @@ class NCSNppUnet(nn.Module):
             self.skip = Conv2d(in_channels=in_channels, out_channels=out_channels, kernel=kernel, up=up, down=down, resample_filter=resample_filter, **init)
 
         if self.num_heads:
-            self.norm2 = nn.GroupNorm(num_channels=out_channels, eps=eps)
+            self.norm2 = nn.GroupNorm(num_groups=self.get_num_groups(out_channels), num_channels=out_channels, eps=eps)
             self.qkv = Conv2d(in_channels=out_channels, out_channels=out_channels*3, kernel=1, **(init_attn if init_attn is not None else init))
             self.proj = Conv2d(in_channels=out_channels, out_channels=out_channels, kernel=1, **init_zero)
 
