@@ -16,7 +16,7 @@ if __name__ == "__main__":
     curr_dir = os.path.dirname(__file__)
     
     path = f"{curr_dir}/../datasets/cifar10-32x32.zip"
-    batch_size = 16
+    batch_size = 128
     torch.multiprocessing.set_start_method('spawn')
     ds = ImageFolderDataset(path=path, use_labels=False, cache=True)
     sampler = InfiniteSampler(ds)
@@ -24,7 +24,6 @@ if __name__ == "__main__":
     net_ve = VEPrecond()
     net_ve = net_ve.train().requires_grad_(True).to(device=device)
     optimizer = optim.Adam( net_ve.parameters(),lr=1e-3, betas=[0.9,0.999], eps=1e-8)
-    loss_fn = VELoss()
     images, labels = next(iterator)
     images = images.to(device).to(torch.float32) / 127.5 - 1
     loss = loss_fn(net=net_ve, images=images)
@@ -33,6 +32,10 @@ if __name__ == "__main__":
     # exit()
     train_iter = 0
     train_steps =0 
+    # parameters for noise 
+    # described in appendix
+    sigma_min = 0.02
+    sigma_max = 100
     while True:
     # Accumulate gradients.
         optimizer.zero_grad(set_to_none=True)
@@ -41,7 +44,14 @@ if __name__ == "__main__":
             images, labels = next(iterator)
             images = images.to(device).to(torch.float32) / 127.5 - 1
             labels = labels.to(device)
-            loss = loss_fn(net=net_ve, images=images).sum()
+            rnd_uniform = torch.rand([images.shape[0], 1, 1, 1], device=images.device)
+            sigma = sigma_min * ((sigma_max / sigma_min) ** rnd_uniform)
+            weight = 1 / sigma ** 2
+            y= images
+            n = torch.randn_like(y) * sigma
+            D_yn = net_ve(y + n, sigma)
+            loss = weight * ((D_yn - y) ** 2)
+            loss = loss.sum()
             logger.add_scalar('Loss/loss', loss, train_steps)
             loss.backward()
 
