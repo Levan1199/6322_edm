@@ -1,0 +1,88 @@
+Diffusion models are one of the most popular methods for neural image synthesis. The mechanism used for image syntheis can be 
+translated across different data domains, such as text, and audio. Considering the improvements to these models,
+theer are several aspects that can be improved such as the quality iof the synthesized image, training cost, and the speed
+of generating images.
+
+Even though literature has provided a sound theoretical framework, on which to build diffusion models, it is still unclear
+on how to navigate the design space of diffusion models to maximize the desired improvements.
+The paper we proposed to reproduce whiose results, focused on the tangible attributes of diffusion models, that 
+help in navigating the design space more efficiently, rather than focusing on the underlying theoretical work.
+In doing so, the authors provide a new perspective to understanding diffusion models, enabling researchers to better understand the 
+processes behind them.
+They demonstarte this by focusing on a broad class of nerual networks, that are used to predit the score of a a marginal
+distribution of the training data, which is corrupted by Gaussian noise. The score is the gradient of the log likelighood
+of the probability density with respect to the dataset, where the probability densityis parameterized
+by theta and represents the density of the dataset [https://www.iro.umontreal.ca/~vincentp/Publications/smdae_techreport.pdf,
+A Connection Between Score Matching
+and Denoising Autoencoders]
+. Specifically, the authors focus on the 
+denosiign score matching.
+
+Score matching is an alternative to MLE (Maximum Likelihood Estimation) for unnormalized probability density models, whose 
+partition function (the definite integral of the unnormalized density function over its entire domain ). In score matching, instead of matching
+the probability density with real density, whose partition function may be unknonw, we match the score of the distirubtion w.r.t to the dataset
+(in cases where real density in unknwon, we can use implicit score matching)
+
+The second contributions of the authors revolve around the sampling process, and they indeitfy tghe best
+time descretization for the diffusion process sampling that produces best results, aided with higher order Runge-Kutta method .
+Furthermore, they analyze the significance of sticahtsicity in the sampling process for diffusion models.
+From their results, they identified a crucial component that significalty drops the number of sampling steps.
+
+For the score modelling network, the authors still rely on the commonly used archictectures like DDPM and NCSN
+DDPM stands for denoising diffusion porbabilistic models
+DPM (Diffusion porbabilistic models) are a parametrixed Markov chain, trained using variational inference to produce samples matching the
+datase. The Markov state transition of this chain perform what is equivalent of a reverse diffusion process. 
+Here the forwrad diffusion process corrupts data at each transition with Gaussian noise. If the noise amount is small,
+then we can model the transitions as a conditional Gaussian, allowing us to utilzie Neural Networks to model the 
+probability density.
+Under certain conditions, dictated by the parameterization of the diffusion model, they can be said to be equivalent to score matching 
+networks. [Denoising Diffusion Probabilistic Models]
+
+NCSN:
+A neural network trained for score matching can provide a vector field with the direction in which the log probability 
+of the dataset is higher. This can be used for sample generation using Langevin dynamics.
+
+A probablity flow is the process of incereasing or decerasing the noise level of an image when moving forward or backward in time.
+This process can be expressed in terms of an ODE (Ordinary Diiferential Equation). THis ODE can be formulated in terms of a 
+variance schedule sigma(t), which describes the noise variance. Typically, the choice of this schedule is motivated from physics
+and chosen as sqrt(t), which represents the constant speed heat diffusion. Howveer, in this paper,
+the authors demonstrated that this choise has a considerable effect on the training, and recommends that it should not be 
+blindly chosen.
+For ODE to be considered as a probability flow ODE, the following condition must be satsified:
+    x_a sampeld from p(x_a, sigma(t)) eveolved in time (forward or backward) yeilds x_b sampeld from p(x_b, sigmat(t+/-1))
+    The ODE that satisifes this can be written as -sigmat(t)_dot sigma(t) *score(p(x, sigma(t))) *dt
+A forward step in this ODE makes the data go further away from the distribution, and a backward step makes
+the data go closer towards the distribution.
+The advantage of using score function is that the intractable parition function doesn't need to be computed.
+The denoiser function, parametrized by neural networs, is represented as 
+D_theta(x, sigma) = c_skip(sigma)*x + c_ou(sigma)*F_theta(c_in(sigma)*x, c_coise(sigma)). Here F_theta represents the 
+neural network. The aparemetrs c_* are scaling parameters.
+The denoiser is trained by minimizing the expected L2 error by denoising samples that are randomly sampled, and corrputed with noise n
+which is sampled from a noise distribution according to noise schedule.
+Here we can define the score as (D_theta(x, sigma) - x)/sigma^2
+
+One of the main claim the authors make is that the choices related to the sampling process, such as the noise schedule and s(t)
+should not affect the training of the denoiser.
+
+The metric sued to compare the result quality is called Frechet Inception distance (FID). 
+The number of time the denoise (D_theta) is evalauted is termed as the Neural Fucntion Evaluations (NFE)
+Most of the cost in sampling process is due to the D_theta, therfore, improving NFE explicitly improvs
+the sampling speed.
+
+Solving an ODE is an approximation to the trajectory followed by the analytical solution of the ODE. In cases where an 
+analytical solution does'nt exist, we can discretize the integration interval into N steps, and iteratively determine the solution.
+Howveer, this step introduces truncation error, inversly proportional to N. That is, at N-> inf, iterated
+solution approaches analytical solution.
+The commonly used EUler method (first order) has a local truncation error of O(h^2), where h is the step size (or delta_T/N)
+Runge-Kutta method (4th order), which are higher order has better truncation error, at the cost of more evalautions of D_theta per step.
+The Heuns method (2nd order) provides a better tradeoff between EUelrs and RK4 methods, with a 
+truncation error of O(h^3)
+
+
+The time steps t_i determine how the step sizes and truncation errors are distributed between each adjacent nosie level.
+The authors reprot that the step size should derease monotonically, and simialrly sigma should also decerase monotoncially.
+The authors adopt a parametrixed scheme where the timestep t_i is determined according to a sequence of noise level 
+explicitly, t_i = sigma(t)_inverse(sigma_i) . Here sigma_i<N = (A*i +B)^rho and sigma_N = 0 (see equation 5)
+NOte the distinction between sigma(t) which is the scheduled variance and sigma_i (which is a rpedefined sequence (see eq 5))
+
+
